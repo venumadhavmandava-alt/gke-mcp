@@ -1,0 +1,239 @@
+
+# ======================================================================
+# MCP server configuration for Kubernetes (GKE)
+# Save as: ./config/mcp.yaml
+# ======================================================================
+
+server:
+  # Display name used by clients (e.g., ADK Web, MCP Inspector)
+  name: kubernetes
+
+  # Path to the kubeconfig the server should use.
+  # Tip: copy your current kubeconfig:
+  #   cp ~/.kube/config ./config/kubeconfig.yaml
+  kubeconfig: ./config/kubeconfig.yaml
+
+  # Default Kubernetes context to use (from your kubeconfig).
+  # You can override per-request if your tools accept a 'context' param.
+  context: gke_odev-elselk-rnd-indexer-faf9_us-central1_cos-rnd-cluster-2
+
+  # Limit which namespaces the server is allowed to operate on.
+  # Add/remove as needed for your environment.
+  namespace_allowlist:
+    - default
+    - monitoring
+    - kube-system
+
+  # Safety & governance
+  safety:
+    # Global read-only mode (true blocks mutating operations unless a tool
+    # explicitly declares 'requires_approval: true' and the client provides approval).
+    read_only_default: true
+
+    # Require explicit approval for tools labeled 'requires_approval: true'
+    # (e.g., apply/delete). Clients should implement an approval flow.
+    require_explicit_approval: true
+
+    # Optional pattern-based resource guards (denylist takes precedence).
+    resource_guards:
+      deny_kinds:
+        - "ClusterRole"
+        - "ClusterRoleBinding"
+        - "ValidatingWebhookConfiguration"
+        - "MutatingWebhookConfiguration"
+      deny_namespaces:
+        - "kube-system"   # allow only read in kube-system; mutates are blocked
+      allow_mutations_in_namespaces:
+        - "default"
+        - "monitoring"
+
+  # Logging & audit settings
+  logging:
+    level: INFO
+    # Where to write logs; 'stderr' or a file path.
+    output: stderr
+    # Structured JSON logs make client-side parsing easier.
+    json: true
+
+  audit:
+    enabled: true
+    file: ./config/audit.log
+    include_request_params: true
+    redact:
+      # Redact high-risk fields in audit trail
+      fields:
+        - token
+        - password
+        - client_key
+        - certificate_authority_data
+
+# ----------------------------------------------------------------------
+# Transport config
+# For local runs, STDIO is recommended. For browser/remote clients,
+# you can expose SSE or Streamable HTTP if your server supports them.
+# ----------------------------------------------------------------------
+transport:
+  type: stdio
+  # For SSE or HTTP, you might use:
+  # type: sse
+  # host: 127.0.0.1
+  # port: 9000
+  # cors:
+  #   allowed_origins:
+  #     - "http://localhost:3000"
+
+# ----------------------------------------------------------------------
+# Tool registry
+# Each tool defines what the server exposes to the MCP client.
+# Most tools here are read-only; mutating tools require approval.
+# ----------------------------------------------------------------------
+tools:
+  # ======== Read-only discovery ========
+  - name: k8s.list_namespaces
+    description: List namespaces in the active cluster context.
+    params:
+      - { name: context, type: string, required: false }
+    output: json
+
+  - name: k8s.cluster_version
+    description: Show Kubernetes server version.
+    params:
+      - { name: context, type: string, required: false }
+    output: json
+
+  - name: k8s.nodes_status
+    description: List nodes and their conditions/capacity.
+    params:
+      - { name: context, type: string, required: false }
+    output: json
+
+  - name: k8s.get_pods
+    description: List pods in a namespace.
+    params:
+      - { name: namespace, type: string, required: true }
+      - { name: context,   type: string, required: false }
+      - { name: label_selector, type: string, required: false }
+      - { name: field_selector, type: string, required: false }
+    output: json
+
+  - name: k8s.describe
+    description: Describe a Kubernetes resource (e.g., Deployment, Pod).
+    params:
+      - { name: namespace, type: string, required: false }
+      - { name: kind,      type: string, required: true,  enum: ["Deployment", "StatefulSet", "DaemonSet", "Pod", "Service", "Ingress", "ConfigMap", "Secret"] }
+      - { name: name,      type: string, required: true }
+      - { name: context,   type: string, required: false }
+    output: text
+
+  - name: k8s.logs
+    description: Get logs for a pod (optionally container) with tail/since.
+    params:
+      - { name: namespace, type: string, required: true }
+      - { name: pod,       type: string, required: true }
+      - { name: container, type: string, required: false }
+      - { name: tail,      type: integer, required: false, default: 200 }
+      - { name: since,     type: string,  required: false, default: "10m" }
+      - { name: context,   type: string,  required: false }
+      - { name: follow,    type: boolean, required: false, default: false }
+    output: text
+
+  - name: k8s.get_deployments
+    description: List deployments in a namespace.
+    params:
+      - { name: namespace, type: string, required: true }
+      - { name: context,   type: string, required: false }
+      - { name: label_selector, type: string, required: false }
+    output: json
+
+  - name: k8s.get_events
+    description: List recent events in a namespace (cluster if namespace omitted).
+    params:
+      - { name: namespace, type: string, required: false }
+      - { name: context,   type: string, required: false }
+      - { name: since,     type: string,  required: false, default: "30m" }
+    output: json
+
+  # ======== Mutating (approval required) ========
+  - name: k8s.apply_yaml
+    description: Apply a Kubernetes manifest (server-side apply).
+    requires_approval: true
+    params:
+      - { name: namespace, type: string, required: false }
+      - { name: manifest_yaml, type: string, required: true }   # full YAML content
+      - { name: context,   type: string, required: false }
+      - { name: dry_run,   type: boolean, required: false, default: false }
+      - { name: field_manager, type: string, required: false, default: "mcp-server" }
+    output: json
+
+  - name: k8s.delete
+    description: Delete a resource by kind/name/namespace.
+    requires_approval: true
+    params:
+      - { name: namespace, type: string, required: false }
+      - { name: kind,      type: string, required: true, enum: ["Deployment", "StatefulSet", "DaemonSet", "Pod", "Service", "Ingress", "ConfigMap", "Secret"] }
+      - { name: name,      type: string, required: true }
+      - { name: context,   type: string, required: false }
+      - { name: grace_period_seconds, type: integer, required: false, default: 30 }
+      - { name: propagation_policy, type: string, required: false, enum: ["Foreground", "Background", "Orphan"], default: "Foreground" }
+    output: json
+
+  - name: k8s.restart_deployment
+    description: Roll pods by annotating/deploying (patch trigger).
+    requires_approval: true
+    params:
+      - { name: namespace, type: string, required: true }
+      - { name: name,      type: string, required: true }
+      - { name: context,   type: string, required: false }
+    output: json
+
+# ----------------------------------------------------------------------
+# Resources (read-only context the client can fetch)
+# Useful for surfacing cluster summaries or templates.
+# ----------------------------------------------------------------------
+resources:
+  - uri: "cluster://summary"
+    description: High-level cluster info (version, node count, namespaces).
+    tool: k8s.cluster_version   # resolved via listed tools
+    compose:
+      nodes: k8s.nodes_status
+      namespaces: k8s.list_namespaces
+
+  - uri: "templates://bdot/bindplane-otel-daemonset"
+    description: BDOT (Bindplane OTEL) DaemonSet template for quick deployment.
+    file: ./config/templates/bdot-daemonset.yaml
+    mime_type: application/yaml
+
+# ----------------------------------------------------------------------
+# Prompts (reusable instruction templates for clients)
+# ----------------------------------------------------------------------
+prompts:
+  - name: "diagnose-pod"
+    description: Ask the assistant to diagnose a failing pod using events/logs.
+    template: |
+      You are a Kubernetes SRE assistant. Given a namespace and pod name,
+      collect recent Events and Pod logs, then summarize root cause and
+      recommended remediation. If logs are noisy, focus on errors and warnings.
+
+      Inputs:
+      - namespace: {{namespace}}
+      - pod: {{pod}}
+      Steps:
+      1) Call k8s.get_events(namespace={{namespace}}, since="30m")
+      2) Call k8s.logs(namespace={{namespace}}, pod={{pod}}, tail=400, since="20m")
+      3) Synthesize key findings, root cause, and next steps.
+
+# ----------------------------------------------------------------------
+# Client policy (optional hints to client UIs)
+# ----------------------------------------------------------------------
+client_policy:
+  approvals:
+    # Mutating tools require explicit approval
+    required_for_tools:
+      - k8s.apply_yaml
+      - k8s.delete
+      - k8s.restart_deployment
+  ui:
+    # Show a prominent warning when a mutating tool is selected
+    warn_on_mutations: true
+    default_output_format: table
+
