@@ -19,7 +19,7 @@ To **safely execute, automate, and assist** with GKE cluster and workload operat
 ### 📦 Install Python Dependencies
 
 ```bash
-git clone https://github.com/bathas2021/gke-mcp.git
+git clone https://github.com/venumadhavmandava-alt/gke-mcp.git
 cd gke-mcp
 pip install -r requirements.txt
 ```
