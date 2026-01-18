@@ -131,3 +131,96 @@ https://github.com/user-attachments/assets/f390d0c3-b8d5-47ff-b263-4b87d2cec63d
 > migrate_gke_node_pool_workloads= Migrate workloads from nodepool
 ```
 
+(.venv) vmandav@MCHIMD45RXWR gke-mcp % kubectl config set-cluster kubernetes-admin --insecure-skip-tls-verify=true
+Cluster "kubernetes-admin" set.
+(.venv) vmandav@MCHIMD45RXWR gke-mcp % kubectl config set-cluster kubernetes-admin --insecure-skip-tls-verify=true
+export KUBECONFIG=$(pwd)/config/dc15-c5.yaml  
+export MCP_ROOT="/Users/vmandav/downloads/gke-mcp"   
+export GOOGLE_CLOUD_LOCATION="global"  
+export GOOGLE_GENAI_USE_VERTEXAI=True 
+export MCP_CONFIG="/Users/vmandav/downloads/gke-mcp/config/mcp.yaml" 
+pat.HgTKqISVTX-kQSVsWCHEcA.69606533b7a0fa7f519e90bc.5NzBaQl4c53rsMGuXJE2
+
+
+kubectl config set-cluster gke_odev-elselk-rnd-indexer-faf9_us-central1_cos-rnd-cluster-2 --insecure-skip-tls-verify=true  export MCP_ROOT="/Users/vmandav/downloads/gke-mcp" 
+
+export MCP_CONFIG="/Users/vmandav/downloads/gke-mcp/config/mcp.yaml"
+
+
+create the frontend-app deployment in the dev namespace using the nginx:latest image and 2 replicas and create the namespace if it does not exist   . For the Entire Cluster (All Namespaces):
+
+"KubeTalk, analyze the cluster health and give me a summary of any issues."
+2. For a Specific Namespace (e.g., 'dev'):
+
+"Check the health of the dev namespace."
+3. To Focus Only on Failing Pods:
+
+"Run a diagnostic scan for Pod issues in all namespaces."
+4. To Investigate Why Something is Broken:
+
+"Troubleshoot the cluster and tell me why things are failing."
+
+List namespaces list pods scale up and scale down 
+
+gcp-gke-module-demo-indexer
+
+Pat token: pat.HgTKqISVTX-kQSVsWCHEcA.696433b98998c536086ac562.p1xo1PIVA2tBhkp0Emgb
+
+
+# new-mcp/agents/kubernetes_devops/agent.py
+import os
+import ssl
+import logging
+from google.adk.agents import LlmAgent
+from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams
+from mcp import StdioServerParameters
+
+# --- Global SSL Bypass ---
+try:
+    ssl._create_default_https_context = ssl._create_unverified_context
+    logging.info("SSL verification bypass applied.")
+except Exception as e:
+    logging.warning(f"Failed to apply SSL bypass: {e}")
+
+def create_root_agent():
+    mcp_root = os.getenv("MCP_ROOT")
+    config_path = os.getenv("MCP_CONFIG")
+    
+    mcp_env = os.environ.copy()
+    mcp_env["PYTHONPATH"] = mcp_root
+    mcp_env["USE_GKE_GCLOUD_AUTH_PLUGIN"] = "True"
+    
+    # Total SSL Bypass
+    mcp_env["PYTHONHTTPSVERIFY"] = "0"
+    mcp_env["REQUESTS_CA_BUNDLE"] = ""
+    mcp_env["SSL_CERT_FILE"] = ""
+    
+    # Stability Fixes
+    mcp_env["PYTHONUNBUFFERED"] = "1"
+    mcp_env["LOG_LEVEL"] = "ERROR"
+
+    return LlmAgent(
+        model='gemini-2.5-flash',
+        name='kubetalk',
+        instruction="You are an AI DevOps agent...",
+        tools=[
+            MCPToolset(
+                connection_params=StdioConnectionParams(
+                    server_params=StdioServerParameters(
+                        command="python3",
+                        args=[
+                            "-m", "gke-mcp", 
+                            "--transport", "stdio", 
+                            "--path", config_path
+                        ],
+                        env=mcp_env
+                    ),
+                    # --- CORRECTED: Use 'timeout' inside StdioConnectionParams ---
+                    timeout=60 
+                )
+            )
+        ]
+    )
+
+root_agent = create_root_agent()
+
