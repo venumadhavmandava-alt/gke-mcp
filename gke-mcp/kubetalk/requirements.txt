@@ -1,0 +1,10 @@
+requests>=2.31.0
+google-adk>=1.21.0
+pydantic>=2.11.3
+python-dotenv>=1.1.0
+google-cloud-aiplatform[adk,agent_engines]>=1.132.0
+absl-py>=2.1.0
+cloudpickle>=3.0.0
+fastmcp>=2.11.3
+kubernetes==32.0.0
+mcp>=1.2.0
