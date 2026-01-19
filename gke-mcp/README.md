@@ -224,3 +224,10 @@ def create_root_agent():
 
 root_agent = create_root_agent()
 
+git clone https://github.com/bathas2021/gke-mcp.git
+cd gke-mcp
+pip install -r requirements.txt
+kubectl config set-cluster gke_odev-elselk-rnd-indexer-faf9_us-central1_cos-rnd-cluster-2 --insecure-skip-tls-verify=true
+kubectl config use-context gke_odev-elselk-rnd-indexer-faf9_us-central1_cos-rnd-cluster-2 
+export PATH="$PATH:/Users/vmandav/Library/Python/3.13/bin" 
+source venv/bin/activate  
