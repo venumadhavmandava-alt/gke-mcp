@@ -62,6 +62,103 @@ class MCPServer:
         # --- ADD THIS LINE FIRST ---
         # This registers 'analyze_kubernetes_cluster' and 'get_pod_logs'
 
+       def get_maas_dev_alerts() -> Dict[str, Any]:
+            """
+            Fetches active critical alerts for the CMF dev tenant.
+            Regex filter: {severity=~.*critical.*}
+            """
+            import requests
+            import urllib3
+            
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            url = "http://pmaas-mdb-dev.onedev.neustar.biz/alertmanager/api/v1/alerts"
+            
+            # Updated: Using the regex matcher (=~) and wildcards (.*) as requested
+            # Note: Double curly braces are needed for f-strings or just use a standard string
+            params = {'filter': '{severity=~".*critical.*"}'}
+            
+            headers = {
+                'X-Scope-OrgID': 'odev-ps-cmf-dev',
+                'Accept': 'application/json'
+            }
+            
+            try:
+                response = requests.get(
+                    url, 
+                    params=params, 
+                    headers=headers, 
+                    timeout=15, 
+                    verify=False,
+                    proxies={"http": None, "https": None}
+                )
+                response.raise_for_status()
+                
+                # Alertmanager v1 returns data inside a 'data' key
+                json_data = response.json()
+                alerts_list = json_data.get("data", [])
+                
+                return {
+                    "success": True, 
+                    "tenant": "odev-ps-cmf-dev",
+                    "count": len(alerts_list),
+                    "alerts": alerts_list
+                }
+            except Exception as e:
+                return {
+                    "success": False, 
+                    "error": str(e)
+                }
+
+
+        @self.server.tool()
+        def get_tu_incident_details(incident_id: str) -> Dict[str, Any]:
+            """
+            Retrieves status and summary for a TransUnion Remedy ticket.
+            Args:
+                incident_id: The ID like 'INC000013141240'.
+            """
+            import requests
+            
+            # EXACT path from your successful curl command
+            url = f"https://eai-int-np.transunion.com{incident_id}"
+            
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': 'Basic Yjk3OWNhZmQ1MmNjNDZiNmIzNzg1M2M5ZWM5MGM2NmU6OTk5MEM5ODU1NkYwNDc2MmFlQTcxODFDNWMwZjEzNDM='
+            }
+            
+            try:
+                # verify=False is REQUIRED for internal 'np' (non-prod) SSL certificates
+                # proxies=None ensures it uses your VPN/Internal DNS instead of a web proxy
+                response = requests.get(
+                    url, 
+                    headers=headers, 
+                    timeout=15, 
+                    verify=False, 
+                    proxies={"http": None, "https": None}
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                # Mapping the Remedy 'values' fields to readable outputs
+                values = data.get('values', {})
+                return {
+                    "success": True,
+                    "incident_id": incident_id,
+                    "incident_name": values.get("Description", "N/A"),
+                    "status": values.get("Status", "Unknown"),
+                    "assignee": values.get("Assignee", "Unassigned"),
+                    "last_modified": values.get("Last Modified Date", "N/A")
+                }
+            except Exception as e:
+                return {
+                    "success": False, 
+                    "error": f"Remedy API Error: {str(e)}",
+                    "tip": "Ensure you are connected to the TransUnion VPN."
+                }
+
+
         @self.server.tool()   
         def get_pods(namespace: str = None) -> Dict[str, Any]:
             """Get all pods in the specified namespace."""
